@@ -9,10 +9,12 @@ import { getGameTime, postGameTime, getGameTimeEvents } from './game-time.js';
 import {
   handleListUsers,
   handleCreateUser,
+  handleDeleteUser,
   handleChangeGroup,
   handleChangeStatus,
   handleResetPassword,
 } from './users.js';
+import { handleCreateGroup, handleDeleteGroup } from './groups.js';
 import { error } from './response.js';
 import { HttpError } from './utils.js';
 
@@ -23,9 +25,12 @@ const routes = {
   'GET /game-time/events': getGameTimeEvents,
   'GET /users': handleListUsers,
   'POST /users': handleCreateUser,
+  'DELETE /users': handleDeleteUser,
   'PATCH /users/group': handleChangeGroup,
   'PATCH /users/status': handleChangeStatus,
   'POST /reset-password': handleResetPassword,
+  'POST /groups': handleCreateGroup,
+  'DELETE /groups': handleDeleteGroup,
 };
 
 /**

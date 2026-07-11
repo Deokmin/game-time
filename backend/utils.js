@@ -147,23 +147,22 @@ export function requireFamilyId(value) {
 }
 
 /**
- * Cognito 비밀번호 정책(8자 이상, 대문자/소문자/숫자 포함)을 만족하는
+ * Cognito 비밀번호 정책(6자 이상, 소문자/숫자 포함)을 만족하는
  * 랜덤 임시 비밀번호를 생성한다. crypto.randomInt 로 예측 불가능성 보장.
  * @returns {string} 임시 비밀번호 (12자)
  */
 export function generateTempPassword() {
-  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // 혼동되는 I, O 제외
   const lower = 'abcdefghijkmnpqrstuvwxyz'; // 혼동되는 l, o 제외
   const digits = '23456789'; // 혼동되는 0, 1 제외
-  const all = upper + lower + digits;
+  const all = lower + digits;
 
   const pick = (chars) => chars[randomInt(chars.length)];
 
   // 각 문자 종류를 최소 1개씩 보장
-  const chars = [pick(upper), pick(lower), pick(digits)];
+  const chars = [pick(lower), pick(digits)];
 
-  // 나머지 9자는 전체 문자 집합에서 랜덤 선택 (총 12자)
-  for (let i = 0; i < 9; i += 1) {
+  // 나머지 10자는 전체 문자 집합에서 랜덤 선택 (총 12자)
+  for (let i = 0; i < 10; i += 1) {
     chars.push(pick(all));
   }
 

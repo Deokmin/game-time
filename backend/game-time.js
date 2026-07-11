@@ -36,6 +36,11 @@ export async function getGameTime(event) {
   const auth = getAuthContext(event);
   requireGroup(auth, [ADMIN_GROUP, PARENTS_GROUP, CHILDREN_GROUP]);
 
+  // 가족 그룹에 속하지 않은 admin 은 조회할 가족 데이터가 없음
+  if (!auth.familyId) {
+    return ok({ family_id: null, game_times: [] });
+  }
+
   // 반드시 본인 가족의 데이터만 조회 (family_id 는 JWT 에서만 가져옴)
   const items = await getFamilyGameTimes(auth.familyId);
 
@@ -66,6 +71,11 @@ export async function postGameTime(event) {
 
   // Children 은 조회만 가능 - 변경 요청은 403 Forbidden
   requireGroup(auth, [ADMIN_GROUP, PARENTS_GROUP]);
+
+  // 게임 시간은 가족 단위 데이터이므로 가족 그룹 소속이 필수
+  if (!auth.familyId) {
+    throw new HttpError(400, '가족 그룹에 속하지 않은 계정은 게임 시간을 변경할 수 없습니다.');
+  }
 
   const body = parseJsonBody(event);
 
@@ -113,6 +123,11 @@ export async function postGameTime(event) {
 export async function getGameTimeEvents(event) {
   const auth = getAuthContext(event);
   requireGroup(auth, [ADMIN_GROUP, PARENTS_GROUP, CHILDREN_GROUP]);
+
+  // 가족 그룹에 속하지 않은 admin 은 조회할 이력이 없음
+  if (!auth.familyId) {
+    return ok({ family_id: null, events: [] });
+  }
 
   const items = await getFamilyEvents(auth.familyId);
 

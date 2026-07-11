@@ -30,10 +30,11 @@ resource "aws_cognito_user_pool" "this" {
   }
 
   # 비밀번호 정책 (백엔드 임시 비밀번호 생성 로직과 반드시 일치해야 함)
+  # 최소 길이는 Cognito 제약상 6자가 하한선 (4자 설정 불가)
   password_policy {
-    minimum_length                   = 8
+    minimum_length                   = 6
     require_lowercase                = true
-    require_uppercase                = true
+    require_uppercase                = false
     require_numbers                  = true
     require_symbols                  = false
     temporary_password_validity_days = 7
@@ -47,7 +48,9 @@ resource "aws_cognito_user_pool" "this" {
     }
   }
 
-  # 가족 구분용 커스텀 속성 (JWT Claim 에 custom:family_id 로 포함됨)
+  # 참고: 가족 구분은 커스텀 속성이 아니라 Cognito 그룹 멤버십으로 이루어진다
+  # (그룹 이름 = family_id, backend/auth.js 참고). 이 스키마는 과거 버전과의
+  # User Pool 호환성을 위해 남겨두며, 애플리케이션 로직에서는 더 이상 읽지 않는다.
   schema {
     name                     = "family_id"
     attribute_data_type      = "String"
@@ -237,6 +240,7 @@ data "aws_iam_policy_document" "lambda_permissions" {
 
     actions = [
       "cognito-idp:AdminCreateUser",
+      "cognito-idp:AdminDeleteUser",
       "cognito-idp:AdminAddUserToGroup",
       "cognito-idp:AdminRemoveUserFromGroup",
       "cognito-idp:AdminListGroupsForUser",
@@ -245,6 +249,10 @@ data "aws_iam_policy_document" "lambda_permissions" {
       "cognito-idp:AdminSetUserPassword",
       "cognito-idp:AdminGetUser",
       "cognito-idp:ListUsers",
+      "cognito-idp:ListUsersInGroup",
+      "cognito-idp:CreateGroup",
+      "cognito-idp:DeleteGroup",
+      "cognito-idp:GetGroup",
     ]
 
     resources = [
@@ -337,7 +345,7 @@ resource "aws_apigatewayv2_api" "this" {
   # CORS: S3 정적 웹사이트 Origin 만 허용 (S3 웹사이트 엔드포인트는 http 전용)
   cors_configuration {
     allow_origins = ["http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"]
-    allow_methods = ["GET", "POST", "PATCH", "OPTIONS"]
+    allow_methods = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
     allow_headers = ["authorization", "content-type"]
     max_age       = 3600
   }
@@ -372,9 +380,12 @@ resource "aws_apigatewayv2_route" "protected" {
     "GET /game-time/events",
     "GET /users",
     "POST /users",
+    "DELETE /users",
     "PATCH /users/group",
     "PATCH /users/status",
     "POST /reset-password",
+    "POST /groups",
+    "DELETE /groups",
   ])
 
   api_id             = aws_apigatewayv2_api.this.id

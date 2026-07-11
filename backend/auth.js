@@ -4,6 +4,12 @@
 // API Gateway 의 Cognito JWT Authorizer 가 1차 토큰 검증을 수행하고,
 // 이 모듈은 검증된 JWT Claims 에서 사용자 컨텍스트(family_id, 그룹)를
 // 추출하여 Lambda 내부에서 2차 권한 검사를 수행한다.
+//
+// 가족 범위(family_id)는 커스텀 속성이 아니라 Cognito 그룹 멤버십에서 온다.
+// 사용자는 다음 그룹에 속해야 한다:
+//   1. 역할 그룹 (admin / Parents / Children 중 하나) - 필수
+//   2. 가족 그룹 (그룹 이름 = family_id, 동적으로 생성/삭제됨)
+//      - Parents/Children 은 필수, admin 은 선택 (가족 없이 전체 관리만 하는 계정 허용)
 // ==============================================================================
 
 import { HttpError } from './utils.js';
@@ -12,6 +18,9 @@ import { HttpError } from './utils.js';
 export const ADMIN_GROUP = process.env.ADMIN_GROUP;
 export const PARENTS_GROUP = process.env.PARENTS_GROUP;
 export const CHILDREN_GROUP = process.env.CHILDREN_GROUP;
+
+// 역할 그룹 목록 (가족 그룹과 구분하는 기준)
+export const ROLE_GROUPS = Object.freeze([ADMIN_GROUP, PARENTS_GROUP, CHILDREN_GROUP]);
 
 /**
  * HTTP API JWT Authorizer 는 배열 클레임(cognito:groups)을
@@ -44,10 +53,22 @@ function parseGroups(raw) {
 }
 
 /**
+ * 그룹 배열을 역할 그룹과 가족 그룹으로 분리한다.
+ * @param {string[]} groups 그룹 이름 배열
+ * @returns {{roleGroups: string[], familyGroups: string[]}}
+ */
+function splitGroups(groups) {
+  const roleGroups = groups.filter((group) => ROLE_GROUPS.includes(group));
+  const familyGroups = groups.filter((group) => !ROLE_GROUPS.includes(group));
+  return { roleGroups, familyGroups };
+}
+
+/**
  * 요청 이벤트에서 인증 컨텍스트를 추출한다.
  * @param {object} event API Gateway 이벤트 (Payload v2.0)
- * @returns {{username: string, familyId: string, groups: string[]}}
- * @throws {HttpError} 클레임이 없거나 family_id 가 없으면 401/403
+ * @returns {{username: string, familyId: string|null, role: string, groups: string[]}}
+ *          familyId 는 admin 이 가족 그룹에 속하지 않은 경우에만 null 이다.
+ * @throws {HttpError} 클레임이 없거나 그룹 구성이 올바르지 않으면 401/403
  */
 export function getAuthContext(event) {
   const claims = event?.requestContext?.authorizer?.jwt?.claims;
@@ -58,43 +79,49 @@ export function getAuthContext(event) {
   }
 
   const username = claims['cognito:username'];
-  const familyId = claims['custom:family_id'];
   const groups = parseGroups(claims['cognito:groups']);
 
   if (!username) {
     throw new HttpError(401, '토큰에 사용자 정보가 없습니다.');
   }
 
-  if (!familyId) {
-    // family_id 가 없는 사용자는 어떤 데이터에도 접근 불가
-    throw new HttpError(403, '가족 정보(family_id)가 설정되지 않은 계정입니다. 관리자에게 문의하세요.');
+  const { roleGroups, familyGroups } = splitGroups(groups);
+
+  if (roleGroups.length !== 1) {
+    // 역할 그룹(admin/Parents/Children)이 정확히 하나가 아니면 접근 불가
+    throw new HttpError(403, '권한 그룹이 올바르게 설정되지 않은 계정입니다. 관리자에게 문의하세요.');
   }
 
-  if (groups.length === 0) {
-    // 그룹이 없는 사용자는 어떤 기능도 사용 불가
-    throw new HttpError(403, '권한 그룹이 설정되지 않은 계정입니다. 관리자에게 문의하세요.');
+  const role = roleGroups[0];
+
+  if (familyGroups.length > 1) {
+    // 어떤 역할이든 가족 그룹이 둘 이상이면 접근 불가
+    throw new HttpError(403, '가족 정보(그룹)가 올바르게 설정되지 않은 계정입니다. 관리자에게 문의하세요.');
   }
 
-  return { username, familyId, groups };
+  if (role !== ADMIN_GROUP && familyGroups.length === 0) {
+    // 부모/자녀는 반드시 가족 그룹에 속해야 함 (admin 은 가족 없이도 허용)
+    throw new HttpError(403, '가족 정보(그룹)가 설정되지 않은 계정입니다. 관리자에게 문의하세요.');
+  }
+
+  return { username, role, familyId: familyGroups[0] ?? null, groups };
 }
 
 /**
- * 사용자가 허용된 그룹 중 하나에 속하는지 검사한다.
- * @param {{groups: string[]}} authContext getAuthContext 반환값
- * @param {string[]} allowedGroups 허용 그룹 목록
- * @throws {HttpError} 어느 그룹에도 속하지 않으면 403
+ * 사용자의 역할이 허용된 역할 중 하나인지 검사한다.
+ * @param {{role: string}} authContext getAuthContext 반환값
+ * @param {string[]} allowedGroups 허용 역할 그룹 목록
+ * @throws {HttpError} 허용되지 않은 역할이면 403
  */
 export function requireGroup(authContext, allowedGroups) {
-  const hasPermission = authContext.groups.some((group) => allowedGroups.includes(group));
-
-  if (!hasPermission) {
+  if (!allowedGroups.includes(authContext.role)) {
     throw new HttpError(403, '이 작업을 수행할 권한이 없습니다.');
   }
 }
 
 /**
- * 관리자(admin) 그룹인지 검사한다.
- * @param {{groups: string[]}} authContext getAuthContext 반환값
+ * 관리자(admin) 역할인지 검사한다.
+ * @param {{role: string}} authContext getAuthContext 반환값
  * @throws {HttpError} admin 이 아니면 403
  */
 export function requireAdmin(authContext) {
