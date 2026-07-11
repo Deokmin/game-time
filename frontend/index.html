@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>가족 게임 시간 관리</title>
+
+  <!-- Terraform 이 자동 생성/업로드하는 런타임 설정 (Cognito, API 엔드포인트) -->
+  <script src="config.js"></script>
+
+  <!-- Amazon Cognito Identity SDK (SRP 인증, 토큰 자동 갱신) -->
+  <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.3.12/dist/amazon-cognito-identity.min.js"></script>
+
+  <!-- FullCalendar (달력) + 한국어 로케일 -->
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/locales-all.global.min.js"></script>
+
+  <style>
+    /* ==================== 기본 스타일 ==================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+      background-color: #f1f5f9;
+      color: #1e293b;
+      line-height: 1.5;
+    }
+
+    button {
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    input, select, textarea {
+      font-family: inherit;
+      font-size: 14px;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      width: 100%;
+      background: #ffffff;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: 2px solid #3b82f6;
+      border-color: transparent;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* ==================== 버튼 ==================== */
+    .btn {
+      display: inline-block;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover {
+      opacity: 0.85;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary { background: #2563eb; color: #ffffff; }
+    .btn-danger  { background: #dc2626; color: #ffffff; }
+    .btn-success { background: #16a34a; color: #ffffff; }
+    .btn-gray    { background: #e2e8f0; color: #334155; }
+    .btn-sm      { padding: 6px 10px; font-size: 12px; }
+    .btn-block   { width: 100%; }
+
+    /* ==================== 인증 화면 (로그인 / 새 비밀번호) ==================== */
+    .auth-container {
+      max-width: 400px;
+      margin: 80px auto;
+      padding: 32px;
+      background: #ffffff;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    .auth-container h1 {
+      font-size: 22px;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
+    .auth-container .subtitle {
+      text-align: center;
+      color: #64748b;
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #475569;
+    }
+
+    .form-error {
+      color: #dc2626;
+      font-size: 13px;
+      margin-bottom: 12px;
+      min-height: 18px;
+    }
+
+    .form-hint {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    /* ==================== 앱 레이아웃 ==================== */
+    .app-header {
+      background: #1e293b;
+      color: #ffffff;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .app-header h1 {
+      font-size: 18px;
+    }
+
+    .app-header .user-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      background: #3b82f6;
+      color: #ffffff;
+    }
+
+    .app-main {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px 16px 60px;
+    }
+
+    /* ==================== 탭 ==================== */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .tab-button {
+      background: none;
+      border: none;
+      padding: 10px 16px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #64748b;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+    }
+
+    .tab-button.active {
+      color: #2563eb;
+      border-bottom-color: #2563eb;
+    }
+
+    /* ==================== 게임 시간 카드 ==================== */
+    .section-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin: 20px 0 12px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    .card .child-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: #475569;
+      margin-bottom: 8px;
+    }
+
+    .card .minutes {
+      font-size: 30px;
+      font-weight: 800;
+      color: #2563eb;
+    }
+
+    .card .minutes.low {
+      color: #dc2626;
+    }
+
+    .card .unit {
+      font-size: 14px;
+      color: #94a3b8;
+    }
+
+    .empty-message {
+      color: #94a3b8;
+      font-size: 14px;
+      padding: 16px;
+      background: #ffffff;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    /* ==================== 달력 ==================== */
+    #calendar {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    .fc .fc-toolbar-title {
+      font-size: 18px;
+    }
+
+    .fc-event {
+      cursor: default;
+      font-size: 12px;
+    }
+
+    /* ==================== 모달 ==================== */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 16px;
+    }
+
+    .modal {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 24px;
+      width: 100%;
+      max-width: 400px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal h2 {
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    .modal-actions .btn {
+      flex: 1;
+    }
+
+    .action-toggle {
+      display: flex;
+      gap: 8px;
+    }
+
+    .action-toggle button {
+      flex: 1;
+      padding: 10px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      background: #ffffff;
+      font-weight: 700;
+      font-size: 14px;
+      color: #64748b;
+    }
+
+    .action-toggle button.selected-save {
+      border-color: #16a34a;
+      background: #f0fdf4;
+      color: #16a34a;
+    }
+
+    .action-toggle button.selected-use {
+      border-color: #dc2626;
+      background: #fef2f2;
+      color: #dc2626;
+    }
+
+    /* ==================== 관리자 화면 ==================== */
+    .admin-section {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    .admin-form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .temp-password-box {
+      background: #fefce8;
+      border: 1px solid #facc15;
+      border-radius: 8px;
+      padding: 14px;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+
+    .temp-password-box code {
+      font-size: 16px;
+      font-weight: 800;
+      background: #ffffff;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+      user-select: all;
+    }
+
+    .users-table-wrapper {
+      overflow-x: auto;
+    }
+
+    table.users-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      min-width: 640px;
+    }
+
+    .users-table th, .users-table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    .users-table th {
+      color: #64748b;
+      font-size: 12px;
+      background: #f8fafc;
+    }
+
+    .users-table select {
+      width: auto;
+      padding: 6px 8px;
+      font-size: 12px;
+    }
+
+    .status-enabled  { color: #16a34a; font-weight: 700; }
+    .status-disabled { color: #dc2626; font-weight: 700; }
+
+    .table-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    /* ==================== 토스트 알림 ==================== */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: #ffffff;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      z-index: 200;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      max-width: 90vw;
+    }
+
+    #toast.toast-error {
+      background: #dc2626;
+    }
+
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 300;
+      color: #64748b;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==================== 초기 로딩 ==================== -->
+  <div id="view-loading" class="loading-overlay">불러오는 중...</div>
+
+  <!-- ==================== 로그인 화면 ==================== -->
+  <div id="view-login" class="auth-container hidden">
+    <h1>가족 게임 시간 관리</h1>
+    <p class="subtitle">로그인하여 시작하세요</p>
+
+    <form id="login-form">
+      <div class="form-group">
+        <label for="login-username">아이디</label>
+        <input type="text" id="login-username" autocomplete="username" required />
+      </div>
+      <div class="form-group">
+        <label for="login-password">비밀번호</label>
+        <input type="password" id="login-password" autocomplete="current-password" required />
+      </div>
+      <p class="form-error" id="login-error"></p>
+      <button type="submit" class="btn btn-primary btn-block" id="login-submit">로그인</button>
+    </form>
+  </div>
+
+  <!-- ==================== 새 비밀번호 설정 화면 (NEW_PASSWORD_REQUIRED) ==================== -->
+  <div id="view-new-password" class="auth-container hidden">
+    <h1>새 비밀번호 설정</h1>
+    <p class="subtitle">최초 로그인입니다. 사용할 새 비밀번호를 설정하세요.</p>
+
+    <form id="new-password-form">
+      <div class="form-group">
+        <label for="new-password">새 비밀번호</label>
+        <input type="password" id="new-password" autocomplete="new-password" required />
+        <p class="form-hint">8자 이상, 대문자/소문자/숫자를 포함해야 합니다.</p>
+      </div>
+      <div class="form-group">
+        <label for="new-password-confirm">새 비밀번호 확인</label>
+        <input type="password" id="new-password-confirm" autocomplete="new-password" required />
+      </div>
+      <p class="form-error" id="new-password-error"></p>
+      <button type="submit" class="btn btn-primary btn-block" id="new-password-submit">비밀번호 설정</button>
+    </form>
+  </div>
+
+  <!-- ==================== 메인 앱 화면 ==================== -->
+  <div id="view-app" class="hidden">
+    <header class="app-header">
+      <h1>🎮 가족 게임 시간 관리</h1>
+      <div class="user-info">
+        <span id="header-user-name"></span>
+        <span class="badge" id="header-user-role"></span>
+        <button class="btn btn-gray btn-sm" id="logout-button">로그아웃</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <div class="tabs">
+        <button class="tab-button active" data-tab="dashboard" id="tab-btn-dashboard">대시보드</button>
+        <button class="tab-button hidden" data-tab="admin" id="tab-btn-admin">관리자</button>
+      </div>
+
+      <!-- ========== 대시보드 탭 ========== -->
+      <section id="tab-dashboard">
+        <h2 class="section-title">남은 게임 시간</h2>
+        <div class="cards" id="game-time-cards"></div>
+        <p class="empty-message hidden" id="game-time-empty">
+          아직 등록된 게임 시간이 없습니다.
+          <span id="game-time-empty-hint"></span>
+        </p>
+
+        <h2 class="section-title">게임 시간 달력</h2>
+        <p class="form-hint" id="calendar-hint" style="margin-bottom: 8px;"></p>
+        <div id="calendar"></div>
+      </section>
+
+      <!-- ========== 관리자 탭 ========== -->
+      <section id="tab-admin" class="hidden">
+        <div class="admin-section">
+          <h2 class="section-title" style="margin-top: 0;">사용자 생성</h2>
+          <form id="create-user-form">
+            <div class="admin-form-grid">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="create-username">아이디</label>
+                <input type="text" id="create-username" placeholder="영문/숫자 3~30자" required />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="create-name">이름</label>
+                <input type="text" id="create-name" placeholder="예: 홍길동" required />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="create-family-id">가족 ID</label>
+                <input type="text" id="create-family-id" placeholder="예: kim-family" required />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="create-group">그룹</label>
+                <select id="create-group" required>
+                  <option value="Parents">Parents (부모)</option>
+                  <option value="Children">Children (자녀)</option>
+                  <option value="admin">admin (관리자)</option>
+                </select>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary" id="create-user-submit">사용자 생성</button>
+          </form>
+
+          <!-- 생성/초기화 후 임시 비밀번호 표시 영역 -->
+          <div class="temp-password-box hidden" id="temp-password-box">
+            <strong id="temp-password-username"></strong> 님의 임시 비밀번호:
+            <code id="temp-password-value"></code>
+            <button class="btn btn-gray btn-sm" id="temp-password-copy" style="margin-left: 8px;">복사</button>
+            <p class="form-hint">이 비밀번호는 지금만 표시됩니다. 사용자에게 안전하게 전달하세요.</p>
+          </div>
+        </div>
+
+        <div class="admin-section">
+          <h2 class="section-title" style="margin-top: 0;">사용자 목록</h2>
+          <div class="form-group" style="max-width: 320px;">
+            <label for="filter-family-id">가족 ID 필터</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="filter-family-id" placeholder="비우면 내 가족, all 은 전체" />
+              <button class="btn btn-gray" id="filter-apply" style="white-space: nowrap;">조회</button>
+            </div>
+          </div>
+          <div class="users-table-wrapper">
+            <table class="users-table">
+              <thead>
+                <tr>
+                  <th>아이디</th>
+                  <th>이름</th>
+                  <th>가족 ID</th>
+                  <th>그룹</th>
+                  <th>상태</th>
+                  <th>관리</th>
+                </tr>
+              </thead>
+              <tbody id="users-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ==================== 게임 시간 추가/차감 모달 (부모/관리자 전용) ==================== -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 id="modal-title">게임 시간 변경</h2>
+      <form id="game-time-form">
+        <div class="form-group">
+          <label>구분</label>
+          <div class="action-toggle">
+            <button type="button" id="action-save" class="selected-save">➕ 추가 (SAVE)</button>
+            <button type="button" id="action-use">➖ 차감 (USE)</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="modal-child-name">자녀 이름</label>
+          <input type="text" id="modal-child-name" list="child-name-list" placeholder="예: 철수" required />
+          <datalist id="child-name-list"></datalist>
+        </div>
+        <div class="form-group">
+          <label for="modal-minutes">시간 (분)</label>
+          <input type="number" id="modal-minutes" min="1" max="1440" step="1" placeholder="예: 30" required />
+        </div>
+        <div class="form-group">
+          <label for="modal-description">사유</label>
+          <input type="text" id="modal-description" maxlength="200" placeholder="예: 수학 숙제 완료" required />
+        </div>
+        <div class="form-group">
+          <label for="modal-target-date">날짜</label>
+          <input type="date" id="modal-target-date" required />
+        </div>
+        <p class="form-error" id="modal-error"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-gray" id="modal-cancel">취소</button>
+          <button type="submit" class="btn btn-primary" id="modal-submit">저장</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== 토스트 알림 ==================== -->
+  <div id="toast" class="hidden"></div>
+
+  <script>
+    'use strict';
+
+    // ==========================================================================
+    // 설정 및 전역 상태
+    // ==========================================================================
+
+    // Terraform 이 생성한 config.js 의 설정 로드
+    const CONFIG = window.APP_CONFIG;
+
+    if (!CONFIG || !CONFIG.userPoolId || !CONFIG.userPoolClientId || !CONFIG.apiBaseUrl) {
+      document.body.innerHTML =
+        '<div class="auth-container"><h1>설정 오류</h1>' +
+        '<p class="subtitle">config.js 를 불러오지 못했습니다. 배포 상태를 확인하세요.</p></div>';
+      throw new Error('APP_CONFIG 가 없습니다.');
+    }
+
+    // Cognito User Pool 객체
+    const userPool = new AmazonCognitoIdentity.CognitoUserPool({
+      UserPoolId: CONFIG.userPoolId,
+      ClientId: CONFIG.userPoolClientId,
+    });
+
+    // 그룹 이름 상수 (백엔드/Terraform 과 일치)
+    const GROUP_ADMIN = 'admin';
+    const GROUP_PARENTS = 'Parents';
+    const GROUP_CHILDREN = 'Children';
+
+    // 전역 상태
+    const state = {
+      // NEW_PASSWORD_REQUIRED Challenge 진행 중인 CognitoUser
+      pendingUser: null,
+      // 현재 로그인 사용자 정보 (JWT Claim 에서 추출)
+      currentUser: null,
+      // FullCalendar 인스턴스
+      calendar: null,
+      // 현재 가족의 자녀 이름 목록 (모달 datalist 용)
+      childNames: [],
+    };
+
+    // ==========================================================================
+    // 공통 유틸리티
+    // ==========================================================================
+
+    /** DOM 요소 조회 단축 함수 */
+    function $(id) {
+      return document.getElementById(id);
+    }
+
+    /** XSS 방지를 위한 HTML 이스케이프 */
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    /** 토스트 알림 표시 */
+    let toastTimer = null;
+    function showToast(message, isError = false) {
+      const toast = $('toast');
+      toast.textContent = message;
+      toast.className = isError ? 'toast-error' : '';
+      toast.classList.remove('hidden');
+
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.add('hidden'), 4000);
+    }
+
+    /** 화면(뷰) 전환 */
+    function showView(viewId) {
+      ['view-loading', 'view-login', 'view-new-password', 'view-app'].forEach((id) => {
+        $(id).classList.toggle('hidden', id !== viewId);
+      });
+    }
+
+    /** 오늘 날짜를 YYYY-MM-DD 로 반환 (로컬 시간 기준) */
+    function todayString() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // ==========================================================================
+    // 인증 (로그인 / 로그아웃 / 세션 유지 / 토큰 자동 갱신)
+    // ==========================================================================
+
+    /**
+     * 유효한 세션을 반환한다.
+     * SDK 의 getSession 은 ID/Access 토큰이 만료된 경우
+     * Refresh Token 으로 자동 갱신을 수행한다. (자동 토큰 갱신)
+     */
+    function ensureSession() {
+      return new Promise((resolve, reject) => {
+        const user = userPool.getCurrentUser();
+        if (!user) {
+          reject(new Error('NO_SESSION'));
+          return;
+        }
+        user.getSession((err, session) => {
+          if (err || !session || !session.isValid()) {
+            reject(err || new Error('INVALID_SESSION'));
+            return;
+          }
+          resolve({ user, session });
+        });
+      });
+    }
+
+    /** ID 토큰 Claim 에서 현재 사용자 정보를 추출하여 상태에 저장 */
+    function loadUserFromSession(session) {
+      const payload = session.getIdToken().payload;
+      const groups = payload['cognito:groups'] || [];
+
+      state.currentUser = {
+        username: payload['cognito:username'],
+        name: payload['name'] || payload['cognito:username'],
+        familyId: payload['custom:family_id'] || null,
+        groups,
+        isAdmin: groups.includes(GROUP_ADMIN),
+        isParent: groups.includes(GROUP_PARENTS),
+      };
+    }
+
+    /** 로그인 처리 (SRP 인증) */
+    function login(username, password) {
+      return new Promise((resolve, reject) => {
+        const cognitoUser = new AmazonCognitoIdentity.CognitoUser({
+          Username: username,
+          Pool: userPool,
+        });
+
+        const authDetails = new AmazonCognitoIdentity.AuthenticationDetails({
+          Username: username,
+          Password: password,
+        });
+
+        cognitoUser.authenticateUser(authDetails, {
+          onSuccess: (session) => resolve({ type: 'SUCCESS', session }),
+
+          onFailure: (err) => reject(err),
+
+          // 임시 비밀번호로 로그인한 경우 새 비밀번호 설정 필요
+          newPasswordRequired: (userAttributes) => {
+            // 수정 불가 속성은 제출 대상에서 제거해야 함
+            delete userAttributes.email_verified;
+            delete userAttributes.phone_number_verified;
+
+            state.pendingUser = cognitoUser;
+            resolve({ type: 'NEW_PASSWORD_REQUIRED' });
+          },
+        });
+      });
+    }
+
+    /** NEW_PASSWORD_REQUIRED Challenge 완료 (새 비밀번호 설정) */
+    function completeNewPassword(newPassword) {
+      return new Promise((resolve, reject) => {
+        if (!state.pendingUser) {
+          reject(new Error('진행 중인 비밀번호 변경 요청이 없습니다.'));
+          return;
+        }
+
+        state.pendingUser.completeNewPasswordChallenge(newPassword, {}, {
+          onSuccess: (session) => {
+            state.pendingUser = null;
+            resolve(session);
+          },
+          onFailure: (err) => reject(err),
+        });
+      });
+    }
+
+    /** 로그아웃 처리 */
+    function logout() {
+      const user = userPool.getCurrentUser();
+      if (user) {
+        user.signOut(); // 로컬 토큰 제거
+      }
+      state.currentUser = null;
+      state.pendingUser = null;
+      if (state.calendar) {
+        state.calendar.destroy();
+        state.calendar = null;
+      }
+      showView('view-login');
+      $('login-form').reset();
+      $('login-error').textContent = '';
+    }
+
+    /** Cognito 오류를 한국어 메시지로 변환 */
+    function translateAuthError(err) {
+      switch (err && err.name) {
+        case 'NotAuthorizedException':
+          // prevent_user_existence_errors=ENABLED 이므로
+          // 존재하지 않는 사용자도 동일 메시지로 처리됨
+          if (String(err.message).includes('disabled')) {
+            return '비활성화된 계정입니다. 관리자에게 문의하세요.';
+          }
+          return '아이디 또는 비밀번호가 올바르지 않습니다.';
+        case 'PasswordResetRequiredException':
+          return '비밀번호 재설정이 필요합니다. 관리자에게 문의하세요.';
+        case 'InvalidPasswordException':
+          return '비밀번호 정책을 만족하지 않습니다. (8자 이상, 대/소문자, 숫자 포함)';
+        case 'InvalidParameterException':
+          return '입력값이 올바르지 않습니다.';
+        case 'LimitExceededException':
+        case 'TooManyRequestsException':
+          return '시도가 너무 많습니다. 잠시 후 다시 시도하세요.';
+        default:
+          return (err && err.message) || '오류가 발생했습니다. 잠시 후 다시 시도하세요.';
+      }
+    }
+
+    // ==========================================================================
+    // API 호출 공통 함수
+    // ==========================================================================
+
+    /**
+     * 인증 토큰을 포함하여 백엔드 API 를 호출한다.
+     * 세션이 만료되었으면 자동 갱신을 시도하고, 갱신 불가 시 로그인 화면으로 이동한다.
+     */
+    async function apiFetch(path, options = {}) {
+      let session;
+      try {
+        ({ session } = await ensureSession());
+      } catch {
+        showToast('세션이 만료되었습니다. 다시 로그인하세요.', true);
+        logout();
+        throw new Error('SESSION_EXPIRED');
+      }
+
+      const headers = {
+        Authorization: `Bearer ${session.getIdToken().getJwtToken()}`,
+      };
+      if (options.body) {
+        headers['Content-Type'] = 'application/json';
+      }
+
+      const response = await fetch(`${CONFIG.apiBaseUrl}${path}`, {
+        method: options.method || 'GET',
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
+      });
+
+      let data = {};
+      try {
+        data = await response.json();
+      } catch {
+        // 본문이 없는 응답 허용
+      }
+
+      if (!response.ok) {
+        throw new Error(data.message || `요청 실패 (HTTP ${response.status})`);
+      }
+
+      return data;
+    }
+
+    // ==========================================================================
+    // 대시보드 - 남은 게임 시간 카드
+    // ==========================================================================
+
+    /** 자녀별 남은 게임 시간 카드를 렌더링 */
+    async function loadGameTimeCards() {
+      const container = $('game-time-cards');
+      const emptyMessage = $('game-time-empty');
+
+      try {
+        const data = await apiFetch('/game-time');
+        const gameTimes = data.game_times || [];
+
+        // 모달의 자녀 이름 자동완성 목록 갱신
+        state.childNames = gameTimes.map((item) => item.child_name);
+        $('child-name-list').innerHTML = state.childNames
+          .map((name) => `<option value="${escapeHtml(name)}"></option>`)
+          .join('');
+
+        if (gameTimes.length === 0) {
+          container.innerHTML = '';
+          emptyMessage.classList.remove('hidden');
+          return;
+        }
+
+        emptyMessage.classList.add('hidden');
+        container.innerHTML = gameTimes
+          .map((item) => {
+            const minutes = Number(item.remaining_minutes) || 0;
+            const lowClass = minutes < 30 ? ' low' : '';
+            return (
+              '<div class="card">' +
+              `<div class="child-name">${escapeHtml(item.child_name)}</div>` +
+              `<div class="minutes${lowClass}">${minutes}<span class="unit">분</span></div>` +
+              '</div>'
+            );
+          })
+          .join('');
+      } catch (err) {
+        if (err.message !== 'SESSION_EXPIRED') {
+          showToast(err.message, true);
+        }
+      }
+    }
+
+    // ==========================================================================
+    // 대시보드 - 달력 (FullCalendar)
+    // ==========================================================================
+
+    /** 달력을 초기화하고 이력 데이터를 표시 */
+    function initCalendar() {
+      const canEdit = state.currentUser.isAdmin || state.currentUser.isParent;
+
+      $('calendar-hint').textContent = canEdit
+        ? '날짜를 클릭하면 게임 시간을 추가하거나 차감할 수 있습니다.'
+        : '게임 시간 변경 이력을 확인할 수 있습니다. (읽기 전용)';
+
+      if (state.calendar) {
+        state.calendar.destroy();
+      }
+
+      state.calendar = new FullCalendar.Calendar($('calendar'), {
+        initialView: 'dayGridMonth',
+        locale: 'ko',
+        height: 'auto',
+        headerToolbar: {
+          left: 'prev,next today',
+          center: 'title',
+          right: '',
+        },
+
+        // 이벤트 소스: 백엔드 이력 API 호출
+        events: async (fetchInfo, successCallback, failureCallback) => {
+          try {
+            const data = await apiFetch('/game-time/events');
+            const events = (data.events || []).map((item) => {
+              const isSave = item.action_type === 'SAVE';
+              const sign = isSave ? '+' : '-';
+              return {
+                id: item.id,
+                title: `${item.child_name} ${sign}${item.minutes}분`,
+                start: item.target_date,
+                allDay: true,
+                // 요구사항: SAVE=초록, USE=빨강
+                backgroundColor: isSave ? '#16a34a' : '#dc2626',
+                borderColor: isSave ? '#16a34a' : '#dc2626',
+                extendedProps: {
+                  childName: item.child_name,
+                  actionType: item.action_type,
+                  minutes: item.minutes,
+                  description: item.description,
+                  createdBy: item.created_by,
+                },
+              };
+            });
+            successCallback(events);
+          } catch (err) {
+            if (err.message !== 'SESSION_EXPIRED') {
+              showToast(err.message, true);
+            }
+            failureCallback(err);
+          }
+        },
+
+        // 툴팁: 자녀 이름 / 추가·차감 / 분 / 사유
+        eventDidMount: (info) => {
+          const props = info.event.extendedProps;
+          const actionLabel = props.actionType === 'SAVE' ? '추가' : '차감';
+          info.el.title =
+            `자녀: ${props.childName}\n` +
+            `구분: ${actionLabel}\n` +
+            `시간: ${props.minutes}분\n` +
+            `사유: ${props.description || '-'}`;
+        },
+
+        // 날짜 클릭: 부모/관리자만 추가·차감 팝업 (자녀는 읽기 전용)
+        dateClick: canEdit
+          ? (info) => openGameTimeModal(info.dateStr)
+          : null,
+      });
+
+      state.calendar.render();
+    }
+
+    // ==========================================================================
+    // 게임 시간 추가/차감 모달 (부모/관리자 전용)
+    // ==========================================================================
+
+    // 현재 모달에서 선택된 액션 타입
+    let modalActionType = 'SAVE';
+
+    /** 모달의 액션 타입(SAVE/USE) 버튼 상태 갱신 */
+    function setModalAction(actionType) {
+      modalActionType = actionType;
+      $('action-save').className = actionType === 'SAVE' ? 'selected-save' : '';
+      $('action-use').className = actionType === 'USE' ? 'selected-use' : '';
+      $('modal-title').textContent =
+        actionType === 'SAVE' ? '게임 시간 추가' : '게임 시간 차감';
+    }
+
+    /** 모달 열기 */
+    function openGameTimeModal(dateStr) {
+      $('game-time-form').reset();
+      $('modal-error').textContent = '';
+      $('modal-target-date').value = dateStr || todayString();
+      setModalAction('SAVE');
+      $('modal-overlay').classList.remove('hidden');
+      $('modal-child-name').focus();
+    }
+
+    /** 모달 닫기 */
+    function closeGameTimeModal() {
+      $('modal-overlay').classList.add('hidden');
+    }
+
+    /** 모달 제출: POST /game-time 호출 */
+    async function submitGameTimeChange(event) {
+      event.preventDefault();
+      const errorEl = $('modal-error');
+      errorEl.textContent = '';
+
+      const childName = $('modal-child-name').value.trim();
+      const minutes = parseInt($('modal-minutes').value, 10);
+      const description = $('modal-description').value.trim();
+      const targetDate = $('modal-target-date').value;
+
+      // 클라이언트 측 입력값 검증 (서버에서도 동일하게 재검증됨)
+      if (!childName) {
+        errorEl.textContent = '자녀 이름을 입력하세요.';
+        return;
+      }
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+        errorEl.textContent = '시간은 1~1440 사이의 정수(분)여야 합니다.';
+        return;
+      }
+      if (!description) {
+        errorEl.textContent = '사유를 입력하세요.';
+        return;
+      }
+      if (!targetDate) {
+        errorEl.textContent = '날짜를 선택하세요.';
+        return;
+      }
+
+      const submitButton = $('modal-submit');
+      submitButton.disabled = true;
+
+      try {
+        const data = await apiFetch('/game-time', {
+          method: 'POST',
+          body: {
+            child_name: childName,
+            action_type: modalActionType,
+            minutes,
+            description,
+            target_date: targetDate,
+          },
+        });
+
+        showToast(data.message || '저장되었습니다.');
+        closeGameTimeModal();
+
+        // 카드와 달력 갱신
+        await loadGameTimeCards();
+        if (state.calendar) {
+          state.calendar.refetchEvents();
+        }
+      } catch (err) {
+        if (err.message !== 'SESSION_EXPIRED') {
+          errorEl.textContent = err.message;
+        }
+      } finally {
+        submitButton.disabled = false;
+      }
+    }
+
+    // ==========================================================================
+    // 관리자 메뉴
+    // ==========================================================================
+
+    /** 임시 비밀번호 표시 박스 갱신 */
+    function showTempPassword(username, password) {
+      $('temp-password-username').textContent = username;
+      $('temp-password-value').textContent = password;
+      $('temp-password-box').classList.remove('hidden');
+    }
+
+    /** 사용자 목록 조회 및 테이블 렌더링 */
+    async function loadUsers() {
+      const tbody = $('users-table-body');
+      tbody.innerHTML = '<tr><td colspan="6">불러오는 중...</td></tr>';
+
+      const filterValue = $('filter-family-id').value.trim();
+      const query = filterValue ? `?family_id=${encodeURIComponent(filterValue)}` : '';
+
+      try {
+        const data = await apiFetch(`/users${query}`);
+        const users = data.users || [];
+
+        if (users.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6">사용자가 없습니다.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = users
+          .map((user) => {
+            const group = (user.groups && user.groups[0]) || '';
+            const isSelf = user.username === state.currentUser.username;
+            const statusHtml = user.enabled
+              ? '<span class="status-enabled">활성</span>'
+              : '<span class="status-disabled">비활성</span>';
+            const statusNote =
+              user.status === 'FORCE_CHANGE_PASSWORD'
+                ? ' <span class="form-hint">(임시비밀번호)</span>'
+                : '';
+
+            // 그룹 선택 옵션
+            const groupOptions = [GROUP_ADMIN, GROUP_PARENTS, GROUP_CHILDREN]
+              .map(
+                (g) =>
+                  `<option value="${g}"${g === group ? ' selected' : ''}>${g}</option>`,
+              )
+              .join('');
+
+            return (
+              '<tr>' +
+              `<td>${escapeHtml(user.username)}</td>` +
+              `<td>${escapeHtml(user.name || '-')}</td>` +
+              `<td>${escapeHtml(user.family_id || '-')}</td>` +
+              `<td><select data-username="${escapeHtml(user.username)}" class="group-select"${isSelf ? ' disabled' : ''}>${groupOptions}</select></td>` +
+              `<td>${statusHtml}${statusNote}</td>` +
+              '<td><div class="table-actions">' +
+              `<button class="btn btn-primary btn-sm action-group" data-username="${escapeHtml(user.username)}"${isSelf ? ' disabled' : ''}>권한 변경</button>` +
+              `<button class="btn btn-gray btn-sm action-reset" data-username="${escapeHtml(user.username)}">비밀번호 초기화</button>` +
+              (user.enabled
+                ? `<button class="btn btn-danger btn-sm action-status" data-username="${escapeHtml(user.username)}" data-enabled="false"${isSelf ? ' disabled' : ''}>비활성화</button>`
+                : `<button class="btn btn-success btn-sm action-status" data-username="${escapeHtml(user.username)}" data-enabled="true">활성화</button>`) +
+              '</div></td>' +
+              '</tr>'
+            );
+          })
+          .join('');
+      } catch (err) {
+        if (err.message !== 'SESSION_EXPIRED') {
+          tbody.innerHTML = `<tr><td colspan="6">${escapeHtml(err.message)}</td></tr>`;
+        }
+      }
+    }
+
+    /** 사용자 생성 폼 제출 */
+    async function submitCreateUser(event) {
+      event.preventDefault();
+
+      const username = $('create-username').value.trim();
+      const name = $('create-name').value.trim();
+      const familyId = $('create-family-id').value.trim();
+      const group = $('create-group').value;
+
+      // 클라이언트 측 입력값 검증
+      if (!/^[a-zA-Z0-9._-]{3,30}$/.test(username)) {
+        showToast('아이디는 영문/숫자/._- 조합의 3~30자여야 합니다.', true);
+        return;
+      }
+      if (!name) {
+        showToast('이름을 입력하세요.', true);
+        return;
+      }
+      if (!/^[a-z0-9-]{1,64}$/.test(familyId)) {
+        showToast('가족 ID 는 영문 소문자/숫자/하이픈 조합이어야 합니다.', true);
+        return;
+      }
+
+      const submitButton = $('create-user-submit');
+      submitButton.disabled = true;
+
+      try {
+        const data = await apiFetch('/users', {
+          method: 'POST',
+          body: { username, name, family_id: familyId, group },
+        });
+
+        showToast(data.message || '사용자가 생성되었습니다.');
+        showTempPassword(data.username, data.temporary_password);
+        $('create-user-form').reset();
+        await loadUsers();
+      } catch (err) {
+        if (err.message !== 'SESSION_EXPIRED') {
+          showToast(err.message, true);
+        }
+      } finally {
+        submitButton.disabled = false;
+      }
+    }
+
+    /** 사용자 목록 테이블의 관리 버튼 클릭 처리 (이벤트 위임) */
+    async function handleUsersTableClick(event) {
+      const button = event.target.closest('button');
+      if (!button || button.disabled) {
+        return;
+      }
+
+      const username = button.dataset.username;
+      if (!username) {
+        return;
+      }
+
+      try {
+        // 권한 변경
+        if (button.classList.contains('action-group')) {
+          const select = document.querySelector(`select.group-select[data-username="${CSS.escape(username)}"]`);
+          if (!select) {
+            return;
+          }
+          button.disabled = true;
+          const data = await apiFetch('/users/group', {
+            method: 'PATCH',
+            body: { username, group: select.value },
+          });
+          showToast(data.message || '권한이 변경되었습니다.');
+          await loadUsers();
+          return;
+        }
+
+        // 비밀번호 초기화
+        if (button.classList.contains('action-reset')) {
+          if (!window.confirm(`${username} 님의 비밀번호를 초기화하시겠습니까?`)) {
+            return;
+          }
+          button.disabled = true;
+          const data = await apiFetch('/reset-password', {
+            method: 'POST',
+            body: { username },
+          });
+          showToast(data.message || '비밀번호가 초기화되었습니다.');
+          showTempPassword(data.username, data.temporary_password);
+          await loadUsers();
+          return;
+        }
+
+        // 활성화 / 비활성화
+        if (button.classList.contains('action-status')) {
+          const enabled = button.dataset.enabled === 'true';
+          const actionLabel = enabled ? '활성화' : '비활성화';
+          if (!window.confirm(`${username} 님을 ${actionLabel}하시겠습니까?`)) {
+            return;
+          }
+          button.disabled = true;
+          const data = await apiFetch('/users/status', {
+            method: 'PATCH',
+            body: { username, enabled },
+          });
+          showToast(data.message || `사용자가 ${actionLabel}되었습니다.`);
+          await loadUsers();
+        }
+      } catch (err) {
+        if (err.message !== 'SESSION_EXPIRED') {
+          showToast(err.message, true);
+        }
+        await loadUsers();
+      }
+    }
+
+    // ==========================================================================
+    // 화면 초기화 및 이벤트 바인딩
+    // ==========================================================================
+
+    /** 로그인 후 메인 앱 화면 표시 */
+    async function showApp(session) {
+      loadUserFromSession(session);
+
+      const user = state.currentUser;
+
+      // 헤더 사용자 정보
+      $('header-user-name').textContent = user.name;
+      $('header-user-role').textContent = user.isAdmin
+        ? '관리자'
+        : user.isParent
+          ? '부모'
+          : '자녀';
+
+      // 관리자 탭 표시 여부
+      $('tab-btn-admin').classList.toggle('hidden', !user.isAdmin);
+
+      // 대시보드 안내 문구
+      $('game-time-empty-hint').textContent =
+        user.isAdmin || user.isParent
+          ? '달력에서 날짜를 클릭하여 게임 시간을 추가하세요.'
+          : '';
+
+      // 기본 탭: 대시보드
+      switchTab('dashboard');
+      showView('view-app');
+
+      // 데이터 로드
+      await loadGameTimeCards();
+      initCalendar();
+    }
+
+    /** 탭 전환 */
+    function switchTab(tabName) {
+      $('tab-btn-dashboard').classList.toggle('active', tabName === 'dashboard');
+      $('tab-btn-admin').classList.toggle('active', tabName === 'admin');
+      $('tab-dashboard').classList.toggle('hidden', tabName !== 'dashboard');
+      $('tab-admin').classList.toggle('hidden', tabName !== 'admin');
+
+      if (tabName === 'admin') {
+        loadUsers();
+      }
+    }
+
+    /** 로그인 폼 제출 처리 */
+    async function handleLoginSubmit(event) {
+      event.preventDefault();
+      const errorEl = $('login-error');
+      errorEl.textContent = '';
+
+      const username = $('login-username').value.trim();
+      const password = $('login-password').value;
+
+      if (!username || !password) {
+        errorEl.textContent = '아이디와 비밀번호를 입력하세요.';
+        return;
+      }
+
+      const submitButton = $('login-submit');
+      submitButton.disabled = true;
+
+      try {
+        const result = await login(username, password);
+
+        if (result.type === 'NEW_PASSWORD_REQUIRED') {
+          // 최초 로그인 - 새 비밀번호 설정 화면으로 전환
+          $('new-password-form').reset();
+          $('new-password-error').textContent = '';
+          showView('view-new-password');
+        } else {
+          await showApp(result.session);
+        }
+      } catch (err) {
+        errorEl.textContent = translateAuthError(err);
+      } finally {
+        submitButton.disabled = false;
+      }
+    }
+
+    /** 새 비밀번호 설정 폼 제출 처리 */
+    async function handleNewPasswordSubmit(event) {
+      event.preventDefault();
+      const errorEl = $('new-password-error');
+      errorEl.textContent = '';
+
+      const newPassword = $('new-password').value;
+      const confirmPassword = $('new-password-confirm').value;
+
+      // 클라이언트 측 비밀번호 정책 검증 (Cognito 정책과 일치)
+      if (
+        newPassword.length < 8 ||
+        !/[A-Z]/.test(newPassword) ||
+        !/[a-z]/.test(newPassword) ||
+        !/[0-9]/.test(newPassword)
+      ) {
+        errorEl.textContent = '비밀번호는 8자 이상, 대문자/소문자/숫자를 포함해야 합니다.';
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        errorEl.textContent = '비밀번호가 서로 일치하지 않습니다.';
+        return;
+      }
+
+      const submitButton = $('new-password-submit');
+      submitButton.disabled = true;
+
+      try {
+        const session = await completeNewPassword(newPassword);
+        showToast('비밀번호가 설정되었습니다.');
+        await showApp(session);
+      } catch (err) {
+        errorEl.textContent = translateAuthError(err);
+      } finally {
+        submitButton.disabled = false;
+      }
+    }
+
+    /** 페이지 로드 시: 기존 세션이 유효하면 자동 로그인 (세션 유지) */
+    async function bootstrap() {
+      // 이벤트 바인딩
+      $('login-form').addEventListener('submit', handleLoginSubmit);
+      $('new-password-form').addEventListener('submit', handleNewPasswordSubmit);
+      $('logout-button').addEventListener('click', logout);
+
+      $('tab-btn-dashboard').addEventListener('click', () => switchTab('dashboard'));
+      $('tab-btn-admin').addEventListener('click', () => switchTab('admin'));
+
+      // 모달
+      $('action-save').addEventListener('click', () => setModalAction('SAVE'));
+      $('action-use').addEventListener('click', () => setModalAction('USE'));
+      $('modal-cancel').addEventListener('click', closeGameTimeModal);
+      $('modal-overlay').addEventListener('click', (event) => {
+        if (event.target === $('modal-overlay')) {
+          closeGameTimeModal();
+        }
+      });
+      $('game-time-form').addEventListener('submit', submitGameTimeChange);
+
+      // 관리자
+      $('create-user-form').addEventListener('submit', submitCreateUser);
+      $('filter-apply').addEventListener('click', loadUsers);
+      $('users-table-body').addEventListener('click', handleUsersTableClick);
+      $('temp-password-copy').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText($('temp-password-value').textContent);
+          showToast('임시 비밀번호가 복사되었습니다.');
+        } catch {
+          showToast('복사에 실패했습니다. 직접 선택하여 복사하세요.', true);
+        }
+      });
+
+      // 세션 확인 (자동 로그인)
+      try {
+        const { session } = await ensureSession();
+        await showApp(session);
+      } catch {
+        showView('view-login');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', bootstrap);
+  </script>
+</body>
+</html>
