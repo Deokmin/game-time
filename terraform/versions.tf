@@ -4,7 +4,16 @@
 
 terraform {
   # Terraform 최소 버전 요구사항
-  required_version = ">= 1.6.0"
+  # (S3 backend 네이티브 잠금(use_lockfile)을 위해 1.10 이상 필요)
+  required_version = ">= 1.10.0"
+
+  backend "s3" {
+    bucket       = "dmk-gametime-tfstate"
+    key          = "game-time/terraform.tfstate"
+    region       = "ap-northeast-2"
+    encrypt      = true
+    use_lockfile = true
+  }
 
   required_providers {
     # AWS Provider - 모든 AWS 리소스 생성에 사용
