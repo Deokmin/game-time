@@ -6,6 +6,8 @@ Free Tier 종료 이후에도 월 비용이 거의 0원에 수렴하도록 설�
 ## 아키텍처
 
 ```
+CloudFront (HTTPS, 기본 도메인)
+    ↓
 Frontend (S3 Static Website, Vanilla JS SPA)
     ↓
 API Gateway HTTP API (Cognito JWT Authorizer, CORS)
@@ -17,7 +19,8 @@ DynamoDB (PAY_PER_REQUEST, Query 전용 - Scan 미사용)
 Amazon Cognito (User Pool, 그룹 기반 권한: admin / Parents / Children + 가족 그룹)
 ```
 
-- CloudFront, Route53, EC2, RDS 등 고정 비용이 발생하는 서비스는 사용하지 않는다.
+- HTTPS 제공을 위해 CloudFront를 사용하되, 커스텀 도메인/Route53/ACM 없이 기본 도메인(`*.cloudfront.net`)만 사용해 상시 무료 티어(월 1TB 전송 + 1,000만 요청) 내에서 운영한다.
+- EC2, RDS 등 고정 비용이 발생하는 서비스는 사용하지 않는다.
 - 모든 사용자는 **역할 그룹**(admin/Parents/Children 중 하나)에 속하고,
   부모/자녀는 추가로 **가족 그룹**(그룹 이름 = 가족 ID)에 반드시 속한다.
   admin 은 가족 그룹 없이도 인증/관리가 가능하다 (가족 없는 관리 전용 계정 허용).
@@ -57,7 +60,8 @@ terraform apply
 
 배포가 끝나면 다음 출력값을 확인할 수 있다.
 
-- `s3_website_url` : 웹사이트 접속 URL
+- `frontend_url` : 웹사이트 접속 URL (HTTPS, CloudFront)
+- `s3_website_url` : S3 직접 접근 URL (HTTP, 디버깅 전용)
 - `api_gateway_url` : API 엔드포인트
 - `cognito_user_pool_id` : User Pool ID
 - `cognito_client_id` : User Pool Client ID

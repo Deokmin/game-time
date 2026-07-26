@@ -9,6 +9,7 @@
 #   5. AWS Lambda (Node.js 20.x, arm64 - 비용 최소화)
 #   6. API Gateway HTTP API (Cognito JWT Authorizer, CORS)
 #   7. S3 Static Website Hosting (SPA)
+#   8. CloudFront (HTTPS 제공)
 # ==============================================================================
 
 # 현재 AWS 계정 정보 (S3 버킷 이름의 전역 고유성 확보에 사용)
@@ -342,9 +343,9 @@ resource "aws_apigatewayv2_api" "this" {
   protocol_type = "HTTP"
   description   = "가족 게임 시간 관리 HTTP API"
 
-  # CORS: S3 정적 웹사이트 Origin 만 허용 (S3 웹사이트 엔드포인트는 http 전용)
+  # CORS: CloudFront(HTTPS) Origin 만 허용
   cors_configuration {
-    allow_origins = ["http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"]
+    allow_origins = ["https://${aws_cloudfront_distribution.frontend.domain_name}"]
     allow_methods = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
     allow_headers = ["authorization", "content-type"]
     max_age       = 3600
@@ -497,4 +498,66 @@ resource "aws_s3_object" "config_js" {
       apiBaseUrl: "${aws_apigatewayv2_api.this.api_endpoint}"
     };
   EOT
+}
+
+# ------------------------------------------------------------------------------
+# 8. CloudFront (HTTPS 제공)
+# ------------------------------------------------------------------------------
+# 커스텀 도메인/Route53/ACM 없이 CloudFront 기본 도메인(*.cloudfront.net)만 사용.
+# 종량제라 트래픽이 거의 없으면 상시 무료 티어(월 1TB 전송 + 1,000만 요청) 내에서 운영된다.
+
+resource "aws_cloudfront_distribution" "frontend" {
+  enabled             = true
+  is_ipv6_enabled     = true
+  default_root_object = "index.html"
+
+  # 아시아(한국) 포함, 남미/오세아니아 제외 - 성능과 비용의 절충
+  price_class = "PriceClass_200"
+
+  origin {
+    domain_name = aws_s3_bucket_website_configuration.frontend.website_endpoint
+    origin_id   = "s3-website"
+
+    # S3 웹사이트 엔드포인트는 HTTP 전용이므로 CloudFront-S3 구간은 HTTP 유지
+    # (사용자-CloudFront 구간만 HTTPS 로 전환하는 것이 목표)
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  default_cache_behavior {
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "s3-website"
+
+    # HTTP 로 접속해도 자동으로 HTTPS 로 리다이렉트
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+
+    forwarded_values {
+      query_string = false
+
+      cookies {
+        forward = "none"
+      }
+    }
+
+    min_ttl     = 0
+    default_ttl = 300 # 5분 - S3 재배포 후 반영 지연을 짧게 유지 (별도 캐시 무효화 로직 없음)
+    max_ttl     = 86400
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  # 커스텀 도메인 없이 CloudFront 기본 인증서 사용 (ACM/Route53 불필요, 비용 없음)
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
 }

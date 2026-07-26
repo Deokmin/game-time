@@ -2,8 +2,13 @@
 # 출력 값 정의
 # ==============================================================================
 
+output "frontend_url" {
+  description = "프론트엔드 HTTPS URL (CloudFront, 브라우저에서 접속)"
+  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+}
+
 output "s3_website_url" {
-  description = "프론트엔드 S3 정적 웹사이트 URL (브라우저에서 접속)"
+  description = "프론트엔드 S3 정적 웹사이트 URL (HTTP, 직접 접근용 - 디버깅 전용, 평소엔 frontend_url 사용)"
   value       = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
 }
 
